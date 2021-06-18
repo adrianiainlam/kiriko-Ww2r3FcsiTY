@@ -13,6 +13,7 @@ import time
 
 def image_template_search(image, template, threshold):
   (tH, tW) = template.shape[:2]
+
   result = cv2.matchTemplate(image, template, cv2.TM_CCOEFF_NORMED)
 
   # find all locations in the result map where the matched value is
@@ -83,50 +84,21 @@ template_files = [
   "templates/9.png"
 ]
 
-template_files_cropped = [
-  "templates/0c.png",
-  "templates/1c.png",
-  "templates/2c.png",
-  "templates/3c.png",
-  "templates/4c.png",
-  "templates/5c.png",
-  "templates/6c.png",
-  "templates/7c.png",
-  "templates/8c.png",
-  "templates/9c.png"
-]
-
-# The templates were cropped from different colors.
-# Here we convert them to grayscale and threshold them, so that
-# they will match images of different colors.
+# Convert templates to grayscale
 templates_color = [cv2.imread(x) for x in template_files]
-templates_gray = [cv2.cvtColor(x, cv2.COLOR_BGR2GRAY) for x in templates_color]
-templates = [x for _, x in [cv2.threshold(x, 128, 255, cv2.THRESH_BINARY) for x in templates_gray]]
+templates = [cv2.cvtColor(x, cv2.COLOR_BGR2GRAY) for x in templates_color]
 
-templates_color_cropped = [cv2.imread(x) for x in template_files_cropped]
-templates_cropped_gray = [cv2.cvtColor(x, cv2.COLOR_BGR2GRAY) for x in templates_color_cropped]
-templates_cropped = [x for _, x in [cv2.threshold(x, 48, 255, cv2.THRESH_BINARY) for x in templates_cropped_gray]]
 
 # Correlation threshold. Determined by trial and error.
-threshold = 0.6
+threshold = 0.8
 
-part1 = sorted(glob.glob("crops_0+/out_*"))
-part2 = sorted(glob.glob("crops_5040+/out_*"))
+crops_list = sorted(glob.glob("crops/out_*"))
 
-for image_file in part1 + part2:
+for image_file in crops_list:
   image_color = cv2.imread(image_file)
 
-  # Choose only one of the color channels.
-  # The pulse number is always red, yellow (= red + green) or green,
-  # so we choose the brightest one between red and green, and discard
-  # the rest. This helps remove the game background.
-  image_red = image_color[:,:,2]
-  image_green = image_color[:,:,1]
-
-  if image_red.mean() > image_green.mean():
-    image = image_red
-  else:
-    image = image_green
+  # Convert image to grayscale
+  image = cv2.cvtColor(image_color, cv2.COLOR_BGR2GRAY)
 
   matches = []
 
@@ -174,33 +146,6 @@ for image_file in part1 + part2:
     if len(matches) == 0 and digit[-1][0] == 0:
       del digit[-1]
     matches.append(digit[-1])
-
-  # If we somehow end up with more than two digits at this point
-  # (if the number is greater than 100, it is cropped so shouldn't
-  # match any template at this point), we just pick out the two
-  # matches with highest correlation.
-  if len(matches) > 2:
-    matches.sort(key=lambda t: t[2])
-    matches = matches[-2:]
-    matches.sort(key=lambda t: t[1])
-
-  if len(matches) == 2 and matches[0][0] == 1:
-    # Over 100 but cropped, try matching the cropped digit
-    extra_matches = []
-
-    for digit_cropped in range(10):
-      template = templates_cropped[digit_cropped]
-      picks = image_template_search(image, template, threshold)
-
-      for pick in picks:
-        # Only consider matches that are to the right of the last digit
-        if pick[0] > matches[-1][1] + 20:
-          extra_matches.append((digit_cropped, pick[0], pick[2]))
-
-    # Append the match that has the highest correlation
-    extra_matches.sort(key=lambda t: t[2])
-    if extra_matches:
-      matches.append(extra_matches[-1])
 
   # Construct the number
   numstr = "".join(str(t[0]) for t in matches)
